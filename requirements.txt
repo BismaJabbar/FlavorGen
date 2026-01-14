@@ -1,8 +1,11 @@
+streamlit
 pandas
 numpy
-streamlit
-sentence-transformers
 scikit-learn
+sentence-transformers==2.2.2
+torch>=2.0.0
 langchain
-gdown
+langchain-embeddings
+langchain-community
 faiss-cpu
+gdown
