@@ -8,4 +8,4 @@ langchain
 langchain-embeddings
 langchain-community
 faiss-cpu
-gdown
+gdown>=4.7.1
