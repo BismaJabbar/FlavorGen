@@ -5,6 +5,11 @@ import numpy as np
 import re
 import ast
 import json
+import csv        # <-- MUST import this
+import sys 
+import gdown
+import os
+import streamlit as st
 
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
@@ -17,7 +22,10 @@ from langchain_core.prompts import PromptTemplate
 
 from langchain_core.runnables import RunnableLambda, RunnableSequence
 
+
 from difflib import get_close_matches
+
+csv.field_size_limit(sys.maxsize)
 # ---------------------------------------
 # Load models
 # ---------------------------------------
@@ -33,7 +41,22 @@ embeddings = HuggingFaceEmbeddings(
 flavor_db = pd.read_csv("FlavorDatabase_normalized.csv")
 ing_mol_conc = pd.read_csv("ingredient_molecule_normalized_with_conc_synthetic.csv")
 aroma = pd.read_csv("scent_compounds_odor_normalized.csv")
-recipes_df = pd.read_csv("recipes_data.csv")
+
+FILE_ID = "1PFrGkI4nvr9S-1GfHdfZte1ocq8sUvxc"
+URL = f"https://drive.google.com/uc?id={FILE_ID}"
+LOCAL_FILE = "recipes_data.csv"
+
+# Download if not already downloaded
+if not os.path.exists(LOCAL_FILE):
+    gdown.download(URL, LOCAL_FILE, quiet=False)
+
+# Load CSV safely using python engine
+recipes_df = pd.read_csv(
+    LOCAL_FILE,
+    engine='python',           # safer for messy CSV
+    on_bad_lines='warn'        # warn and skip bad rows
+)
+
 
 recipes_df["NER_list"] = recipes_df["NER"].apply(ast.literal_eval)
 
@@ -205,19 +228,127 @@ def select_seed_ingredients(ingredient_to_odors, query):
 prompt = PromptTemplate(
     input_variables=["query", "graph", "recipes"],
     template="""
-You are an expert flavor chemist and chef specializing in molecular gastronomy.
+You are an expert flavor chemist and chef specializing in molecular gastronomy,
+aroma chemistry, and data-driven recipe design.
 
-USER FLAVOR INTENT:
+Your decisions MUST be grounded in the provided flavor similarity graph.
+Flavor compatibility is computed from shared aroma compounds and odor descriptors.
+
+Higher similarity values indicate stronger molecular flavor harmony.
+
+---------------------------------------
+STRICT CONSTRAINTS (MANDATORY)
+---------------------------------------
+
+1. Use ONLY ingredients present in the provided flavor graph or synergy ingredient list.
+2. Prefer ingredient pairings with similarity score >= 0.6.
+3. Do NOT invent new flavor pairings or unsupported combinations.
+4. Basic culinary staples are allowed (salt, oil, water, sugar, flour, eggs, butter).
+5. The recipe MUST emphasize the user's target flavor intent.
+6. The dish type must be chosen logically to best express the flavor chemistry.
+7. Do NOT force baking, cooking, or techniques that do not fit the dish type.
+
+---------------------------------------
+USER FLAVOR INTENT
+---------------------------------------
+
 "{query}"
 
-FLAVOR GRAPH:
+---------------------------------------
+FLAVOR GRAPH CONTEXT
+---------------------------------------
+
+This graph encodes ingredient compatibility using shared aroma descriptors.
+Edges represent flavor similarity strength.
+
 {graph}
 
-RELATED RECIPES:
+---------------------------------------
+RELATED RECIPES
+---------------------------------------
+
 {recipes}
 
-Generate ONE coherent recipe grounded in aroma chemistry.
-Do NOT hallucinate ingredients.
+---------------------------------------
+TASK OBJECTIVES
+---------------------------------------
+
+1. Analyze the flavor graph and identify the strongest ingredient pairings.
+2. Select ONE optimal ingredient cluster for a coherent dish.
+3. Decide the most suitable dish category (sauce, soup, drink, glaze, marinade, dessert, cooked dish, etc.).
+4. Generate ONE complete, well-balanced recipe.
+5. Clearly explain the molecular flavor logic behind the pairing.
+
+---------------------------------------
+OUTPUT FORMAT (STRICT)
+---------------------------------------
+
+Follow the adaptive template below.
+Include ONLY sections that make sense for the chosen dish type.
+
+# {{Recipe Title}}
+
+**Category:** {{Dish type}}
+**Servings/Yield:** {{Yield}}
+**Total Time:** {{Time}}
+{{Optional: **Cooking/Baking Temperature:** {{Temperature}} }}
+
+---
+
+## Ingredients & Flavor / Molecular Rationale
+
+Group ingredients logically (Base, Aromatics, Synergy Ingredients, Seasoning, etc.).
+
+For each ingredient:
+
+- **{{Ingredient}} — {{Amount}}**
+  *Explain its molecular contribution, aroma role, or synergy logic*
+
+### Synergy Ingredients (From Graph)
+Use ingredients from `{graph}` and justify their inclusion.
+
+- **{{Synergy Ingredient}} — {{Amount}}**
+  *Why this pairing strengthens the target flavor*
+
+---
+
+## Instructions (Step-by-Step)
+
+Adapt steps based on dish type:
+- Sauces -> simmer, reduce, emulsify
+- Drinks -> infuse, blend, shake
+- Soups -> sauté, simmer, finish
+- Marinades -> whisk, coat, rest
+- Cooked dishes -> prep, cook, assemble
+
+1. {{Step 1}}
+2. {{Step 2}}
+3. {{Step 3}}
+...
+
+---
+
+## Flavor Science / Molecular Explanation
+
+Explain:
+- Dominant aroma compounds
+- Why these ingredients are graph-compatible
+- How cooking or preparation affects aroma release
+- Balance of acidity, fat, sweetness, umami, or bitterness
+- Any Maillard reactions, ester formation, terpene volatility, or emulsification effects
+
+---
+
+## Final Notes
+- Texture and aroma profile
+- Serving suggestions
+- Optional substitutions (if graph-compatible)
+- Variations or extensions
+
+IMPORTANT:
+This is a data-grounded recipe.
+Do NOT hallucinate ingredients, flavors, or chemistry.
+Reason step-by-step internally before answering.
 """
 )
 
