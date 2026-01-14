@@ -1,1 +1,8 @@
+pandas
+numpy
+streamlit
+sentence-transformers
+scikit-learn
+langchain
 gdown
+faiss-cpu
